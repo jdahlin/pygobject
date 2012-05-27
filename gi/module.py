@@ -21,7 +21,6 @@
 # USA
 
 from __future__ import absolute_import
-
 from . import _glib, _gobject
 try:
     maketrans = ''.maketrans
@@ -32,7 +31,7 @@ except AttributeError:
 import gi
 from .overrides import registry
 
-from ._gi import \
+from _gi import \
     Repository, \
     FunctionInfo, \
     RegisteredTypeInfo, \

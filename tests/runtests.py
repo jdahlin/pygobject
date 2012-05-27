@@ -40,6 +40,9 @@ else:
     for filename in glob.iglob(os.path.join(mydir, 'test_*.py')):
         names.append(os.path.basename(filename)[:-3])
 
+sys.path.insert(0, '../')
+sys.path.insert(0, '../gi')
+
 loader = unittest.TestLoader()
 suite = loader.loadTestsFromNames(names)
 

@@ -19,6 +19,12 @@
 # USA
 
 from __future__ import absolute_import
+import os
+import platform
+
+impl = platform.python_implementation().lower()
+if impl in 'pypy':
+    __import__('gi.%s.bootstrap' % (impl, ), {}, {}, ' ')
 
 from ._gi import _API, Repository
 
@@ -28,8 +34,6 @@ import gi._gobject
 gi  # pyflakes
 
 _API = _API  # pyflakes
-
-import os
 
 _versions = {}
 _overridesdir = os.path.join(os.path.dirname(__file__), 'overrides')
