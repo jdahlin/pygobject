@@ -457,11 +457,11 @@ class TypeInfo(BaseInfo):
             type_tag))
 
 
-class Struct(object):
+class Struct(_gobject.GBoxed):
     pass
 
 
-class Boxed(object):
+class Boxed(_gobject.GBoxed):
     pass
 
 
