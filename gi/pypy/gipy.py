@@ -587,8 +587,8 @@ def flags_add(gtype):
     return type(gtype.name, (_gobject.GFlags, ), { '__gtype__': gtype })
 
 
-def flags_register_new_gtype_and_add(*args):
-    print 'flags_register_new_gtype_and_add', args
+def flags_register_new_gtype_and_add(info):
+    return flags_add(info.get_g_type())
 
 
 def register_interface_info(*args):
