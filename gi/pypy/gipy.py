@@ -1,5 +1,6 @@
 import ctypes
 from ctypes.util import find_library
+import sys
 
 import glibpy as _glib
 import gobjectpy as _gobject
@@ -71,6 +72,28 @@ FUNCTION_THROWS = 1 << 5
  TYPE_TAG_UNICHAR) = range(22)
 
 
+def infofunc(name, ret=None, args=[]):
+    class_name = sys._getframe(1).f_code.co_name
+    # FIXME: steal some code from codegen
+    class_name = class_name.replace('Info', '_info')
+    class_name = class_name.replace('Type', '_type')
+    symbol = 'g_%s_%s' % (class_name.lower(), name)
+    symbol = symbol.replace('__', '_')
+    cfunc = getattr(_lib, symbol)
+    cfunc.argtypes = [ctypes.POINTER(BaseInfo)] + args
+    cfunc.restype = ret
+    if ret == ctypes.POINTER(BaseInfo):
+        def wrapper_base(*args):
+            info = cfunc(*args)
+            if info:
+                return info.contents.new(info)
+        return wrapper_base
+    else:
+        def wrapper(*args):
+            return cfunc(*args)
+        return wrapper
+
+
 class BaseInfo(ctypes.Structure):
     def new(self, info):
         info_type = self.get_type()
@@ -120,33 +143,6 @@ class BaseInfo(ctypes.Structure):
         if info:
             return info.contents.new(info)
 
-    def _get_methods(self, info_type):
-        if info_type is StructInfo:
-            n_infos = _lib.g_struct_info_get_n_methods(self)
-        elif info_type is UnionInfo:
-            n_infos = _lib.g_union_info_get_n_methods(self)
-        else:
-            raise AssertionError
-
-        methods = []
-        for i in range(n_infos):
-            if info_type is StructInfo:
-                info = _lib.g_struct_info_get_method(self, i)
-            elif info_type is UnionInfo:
-                info = _lib.g_union_info_get_method(self, i)
-            else:
-                raise AssertionError
-            methods.append(info.contents.new(info))
-
-        return tuple(methods)
-
-_lib.g_struct_info_get_n_methods.argtypes = [ctypes.POINTER(BaseInfo)]
-_lib.g_struct_info_get_n_methods.restype = ctypes.c_int
-
-_lib.g_struct_info_get_method.argtypes = [
-    ctypes.POINTER(BaseInfo), ctypes.c_int]
-_lib.g_struct_info_get_method.restype = ctypes.POINTER(BaseInfo)
-
 _lib.g_base_info_get_type.argtypes = [ctypes.POINTER(BaseInfo)]
 _lib.g_base_info_get_type.restype = ctypes.c_int
 
@@ -161,28 +157,16 @@ _lib.g_base_info_get_container.restype = ctypes.POINTER(BaseInfo)
 
 
 class CallableInfo(BaseInfo):
-    _lib.g_callable_info_get_n_args.argtypes = [ctypes.POINTER(BaseInfo)]
-    _lib.g_callable_info_get_n_args.restype = ctypes.c_int
-
-    _lib.g_callable_info_get_arg.argtypes = [
-        ctypes.POINTER(BaseInfo), ctypes.c_int]
-    _lib.g_callable_info_get_arg.restype = ctypes.POINTER(BaseInfo)
+    get_n_args = infofunc('get_n_args', ctypes.c_int)
+    get_arg = infofunc('get_arg', ctypes.POINTER(BaseInfo), [ctypes.c_int])
 
     def get_arguments(self):
-        n_args = _lib.g_callable_info_get_n_args(self)
-        args = []
-        for i in range(n_args):
-            info = _lib.g_callable_info_get_arg(self, i)
-            args.append(info.contents.new(info))
-        return args
+        for i in range(self.get_n_args()):
+            yield self.get_arg(i)
 
 
 class ArgInfo(BaseInfo):
-    _lib.g_arg_info_get_direction.argtypes = [ctypes.POINTER(BaseInfo)]
-    _lib.g_arg_info_get_direction.restype = ctypes.c_int
-
-    def get_direction(self):
-        return _lib.g_arg_info_get_direction(self)
+    get_direction = infofunc('get_direction', ret=ctypes.c_int)
 
     def is_return_value(self):
         pass
@@ -211,12 +195,7 @@ class ArgInfo(BaseInfo):
     def get_destroy(self):
         pass
 
-    _lib.g_arg_info_get_type.argtypes = [ctypes.POINTER(BaseInfo)]
-    _lib.g_arg_info_get_type.restype = ctypes.POINTER(BaseInfo)
-
-    def get_type(self):
-        info = _lib.g_arg_info_get_type(self)
-        return info.contents.new(info)
+    get_type = infofunc('get_type', ctypes.POINTER(BaseInfo))
 
     def load_typeself(self):
         pass
@@ -249,7 +228,7 @@ class FunctionInfo(CallableInfo):
         call_args = []
         out_args = []
 
-        arg_infos = self.get_arguments()
+        arg_infos = list(self.get_arguments())
 
         # Prepare argtypes / restype
         for n, arg_info in enumerate(arg_infos):
@@ -311,14 +290,8 @@ class FunctionInfo(CallableInfo):
             return_args.append(out_arg)
         return out_args
 
-    _lib.g_function_info_get_symbol.argtypes = [ctypes.POINTER(BaseInfo)]
-    _lib.g_function_info_get_symbol.restype = ctypes.c_char_p
-
-    def get_symbol(self):
-        return _lib.g_function_info_get_symbol(self)
-
-    _lib.g_function_info_get_flags.argtypes = [ctypes.POINTER(BaseInfo)]
-    _lib.g_function_info_get_flags.restype = ctypes.c_int
+    get_flags = infofunc('get_flags', ctypes.c_long)
+    get_symbol = infofunc('get_symbol', ctypes.c_char_p)
 
     def get_flags(self):
         return _lib.g_function_info_get_flags(self)
@@ -333,69 +306,37 @@ class FunctionInfo(CallableInfo):
 
 
 class RegisteredTypeInfo(BaseInfo):
-    def get_g_type(self):
-        return _lib.g_registered_type_info_get_g_type(self)
-
-
-_lib.g_registered_type_info_get_g_type.argtypes = [
-    ctypes.POINTER(RegisteredTypeInfo)]
-_lib.g_registered_type_info_get_g_type.restype = _gobject.GType
+    get_g_type = infofunc('get_g_type', _gobject.GType)
 
 
 class EnumInfo(RegisteredTypeInfo):
     def is_flags(self):
         return self.get_type() == INFO_TYPE_FLAGS
 
+    get_n_values = infofunc('get_n_values', ctypes.c_int)
+    get_value = infofunc('get_value', ctypes.POINTER(BaseInfo), [ctypes.c_int])
+
     def get_values(self):
-        n_infos = _lib.g_enum_info_get_n_values(self)
-        values = []
-        for i in range(n_infos):
-            info = _lib.g_enum_info_get_value(self, i)
-            values.append(info.contents.new(info))
-        return values
-
-
-_lib.g_enum_info_get_n_values.argtypes = [ctypes.POINTER(BaseInfo)]
-_lib.g_enum_info_get_n_values.restype = ctypes.c_int
-
-_lib.g_enum_info_get_value.argtypes = [ctypes.POINTER(BaseInfo), ctypes.c_int]
-_lib.g_enum_info_get_value.restype = ctypes.POINTER(BaseInfo)
+        for i in range(self.get_n_values()):
+            yield self.get_value(i)
 
 
 class ValueInfo(BaseInfo):
-    def get_value(self):
-        return _lib.g_value_info_get_value(self)
-
-_lib.g_value_info_get_value.argtypes = [ctypes.POINTER(BaseInfo)]
-_lib.g_value_info_get_value.restype = ctypes.c_long
+    get_value = infofunc('get_value', ctypes.c_long)
 
 
 class ObjectInfo(RegisteredTypeInfo):
-    _lib.g_object_info_get_parent.argtypes = [ctypes.POINTER(BaseInfo)]
-    _lib.g_object_info_get_parent.restype = ctypes.POINTER(BaseInfo)
+    get_parent = infofunc('get_parent', ctypes.POINTER(BaseInfo))
+    get_n_methods = infofunc('get_n_methods', ctypes.c_int)
+    get_method = infofunc('get_method',
+                          ctypes.POINTER(BaseInfo), [ctypes.c_int])
 
-    def get_parent(self):
-        info = _lib.g_object_info_get_parent(self)
-        if info:
-            return info.contents.new(info)
+    def get_methods(self):
+        for i in range(self.get_n_methods()):
+            yield self.get_method(i)
 
     def get_interfaces(self):
         return []
-
-    _lib.g_object_info_get_n_methods.argtypes = [ctypes.POINTER(BaseInfo)]
-    _lib.g_object_info_get_n_methods.restype = ctypes.c_int
-
-    _lib.g_object_info_get_method.argtypes = [
-        ctypes.POINTER(BaseInfo), ctypes.c_int]
-    _lib.g_object_info_get_method.restype = ctypes.POINTER(BaseInfo)
-
-    def get_methods(self):
-        n_infos = _lib.g_object_info_get_n_methods(self)
-        methods = []
-        for i in range(n_infos):
-            info = _lib.g_object_info_get_method(self, i)
-            methods.append(info.contents.new(info))
-        return methods
 
     def get_constants(self):
         return []
@@ -435,8 +376,13 @@ class StructInfo(RegisteredTypeInfo):
     def get_fields(self):
         return []
 
+    get_n_methods = infofunc('get_n_methods', ctypes.c_int)
+    get_method = infofunc('get_method',
+                          ctypes.POINTER(BaseInfo), [ctypes.c_int])
+
     def get_methods(self):
-        return self._get_methods(StructInfo)
+        for i in range(self.get_n_methods()):
+            yield self.get_method(i)
 
 
 class UnionInfo(RegisteredTypeInfo):
@@ -457,31 +403,11 @@ class TypeInfo(BaseInfo):
             _lib.g_type_tag_to_string(self.get_tag()),
             hash(self))
 
-    _lib.g_type_info_get_tag.argtypes = [ctypes.POINTER(BaseInfo)]
-    _lib.g_type_info_get_tag.restype = ctypes.c_int
-
-    def get_tag(self):
-        return _lib.g_type_info_get_tag(self)
-
-    _lib.g_type_info_get_array_type.argtypes = [ctypes.POINTER(BaseInfo)]
-    _lib.g_type_info_get_array_type.restype = ctypes.c_int
-
-    def get_array_type(self):
-        return _lib.g_type_info_get_array_type(self)
-
-    _lib.g_type_info_get_param_type.argtypes = [
-        ctypes.POINTER(BaseInfo), ctypes.c_int]
-    _lib.g_type_info_get_param_type.restype = ctypes.POINTER(BaseInfo)
-
-    def get_param_type(self, n):
-        info = _lib.g_type_info_get_param_type(self, n)
-        return info.contents.new(info)
-
-    _lib.g_type_info_get_array_length.argtypes = [ctypes.POINTER(BaseInfo)]
-    _lib.g_type_info_get_array_length.restype = ctypes.c_int
-
-    def get_array_length(self):
-        return _lib.g_type_info_get_array_length(self)
+    get_array_length = infofunc('get_array_length', ctypes.c_int)
+    get_array_type = infofunc('get_array_type', ctypes.c_int)
+    get_param_type = infofunc('get_param_type',
+                              ctypes.POINTER(BaseInfo), [ctypes.c_int])
+    get_tag = infofunc('get_tag', ctypes.c_int)
 
     def get_ctype(self):
         type_tag = self.get_tag()
