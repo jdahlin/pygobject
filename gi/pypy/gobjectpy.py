@@ -81,7 +81,7 @@ class GType(object):
 
     @property
     def name(self):
-        return _lib.g_type_name(self.value)
+        return _lib.g_type_name(self.value) or 'invalid'
 
     @classmethod
     def from_name(cls, type_name):
