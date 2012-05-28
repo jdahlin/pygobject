@@ -128,8 +128,9 @@ class BaseInfo(ctypes.Structure):
         return info.contents
 
     def __repr__(self):
-        return '<BaseInfo %s.%s>' % (self.get_namespace(),
-                                     self.get_name(), )
+        return '<%s %s.%s>' % (self.__class__.__name__,
+                               self.get_namespace(),
+                               self.get_name(), )
 
     def get_namespace(self):
         return _lib.g_base_info_get_namespace(self)
