@@ -83,6 +83,10 @@ class GType(object):
     def name(self):
         return _lib.g_type_name(self.value)
 
+    @classmethod
+    def from_name(cls, type_name):
+        return type_from_name(type_name)
+
     _lib.g_type_fundamental.argtypes = [ctypes.c_int]
     _lib.g_type_fundamental.restype = ctypes.c_int
 
