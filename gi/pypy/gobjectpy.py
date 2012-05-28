@@ -108,8 +108,9 @@ class GType(object):
         return _lib.g_type_class_ref(int(self))
 
     def __eq__(self, other):
-        return cmp(self.value, other.value)
-
+        if self.__class__ != other.__class__:
+            return False
+        return self.value == other.value
 
 class GBoxed(object):
     pass
