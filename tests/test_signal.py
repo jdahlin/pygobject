@@ -5,7 +5,10 @@ import unittest
 import sys
 
 from gi.repository import GObject
-import testhelper
+try:
+    import testhelper
+except ImportError:
+    testhelper = None
 from compathelper import _long
 
 

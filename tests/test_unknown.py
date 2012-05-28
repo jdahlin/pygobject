@@ -3,7 +3,10 @@
 import unittest
 
 from gi.repository import GObject
-import testhelper
+try:
+    import testhelper
+except ImportError:
+    testhelper = None
 
 
 TestInterface = GObject.GType.from_name('TestInterface')

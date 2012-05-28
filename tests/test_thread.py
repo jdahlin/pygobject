@@ -1,7 +1,10 @@
 # -*- Mode: Python -*-
 
 import unittest
-import testhelper
+try:
+    import testhelper
+except ImportError:
+    testhelper = None
 
 from gi.repository import GLib
 

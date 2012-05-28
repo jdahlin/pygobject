@@ -5,7 +5,10 @@ import unittest
 
 from gi.repository import GObject
 import sys
-import testhelper
+try:
+    import testhelper
+except ImportError:
+    testhelper = None
 
 
 class TestGObjectAPI(unittest.TestCase):
