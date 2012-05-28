@@ -413,7 +413,11 @@ class StructInfo(RegisteredTypeInfo):
 
 
 class UnionInfo(RegisteredTypeInfo):
-    pass
+    def get_fields(self):
+        return []
+
+    def get_methods(self):
+        return []
 
 
 class CallbackInfo(BaseInfo):
