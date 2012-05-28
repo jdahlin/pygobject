@@ -6,7 +6,7 @@ import unittest
 
 import sys
 sys.path.insert(0, "../")
-from sys import getrefcount
+import sys
 
 import copy
 try:
@@ -205,22 +205,22 @@ class TestEverything(unittest.TestCase):
     def test_struct_gpointer(self):
         l1 = GLib.List()
         self.assertEqual(l1.data, None)
-        init_refcount = getrefcount(l1)
+        init_refcount = sys.getrefcount(l1)
 
         l1.data = 'foo'
         self.assertEqual(l1.data, 'foo')
 
         l2 = l1
         self.assertEqual(l1.data, l2.data)
-        self.assertEqual(getrefcount(l1), init_refcount + 1)
+        self.assertEqual(sys.getrefcount(l1), init_refcount + 1)
 
         l3 = copy.copy(l1)
         l3.data = 'bar'
         self.assertEqual(l1.data, 'foo')
         self.assertEqual(l2.data, 'foo')
         self.assertEqual(l3.data, 'bar')
-        self.assertEqual(getrefcount(l1), init_refcount + 1)
-        self.assertEqual(getrefcount(l3), init_refcount)
+        self.assertEqual(sys.getrefcount(l1), init_refcount + 1)
+        self.assertEqual(sys.getrefcount(l3), init_refcount)
 
 
 class TestNullableArgs(unittest.TestCase):
@@ -361,12 +361,12 @@ class TestCallbacks(unittest.TestCase):
 
         ud = "Test User Data"
 
-        start_ref_count = getrefcount(ud)
+        start_ref_count = sys.getrefcount(ud)
         for i in range(100):
             Everything.test_callback_destroy_notify(callback, ud)
 
         Everything.test_callback_thaw_notifications()
-        end_ref_count = getrefcount(ud)
+        end_ref_count = sys.getrefcount(ud)
 
         self.assertEqual(start_ref_count, end_ref_count)
 
