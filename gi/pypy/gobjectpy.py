@@ -411,11 +411,14 @@ def type_interfaces(*args):
     print 'type_interfaces: not impl', args
 
 
-def type_is_a(*args):
-    print 'type_is_a: not impl', args
+_lib.g_type_is_a.argtypes = [GType.c, GType.c]
+_lib.g_type_is_a.restype = ctypes.c_long
 
 
-_lib.g_type_name.argtypes = [ctypes.c_int]
+def type_is_a(a, b):
+    return bool(_lib.g_type_is_a(int(a), int(b)))
+
+_lib.g_type_name.argtypes = [GType.c]
 _lib.g_type_name.restype = ctypes.c_char_p
 
 
