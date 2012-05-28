@@ -276,8 +276,16 @@ class FunctionInfo(CallableInfo):
                 ctype = python_arg.obj
             elif type_info.get_tag() == TYPE_TAG_UTF8:
                 ctype = ctypes.c_char_p(python_arg)
+            elif type_info.get_tag() == TYPE_TAG_UTF8:
+                ctype = ctypes.c_char_p(python_arg)
+            elif type_info.get_tag() == TYPE_TAG_BOOLEAN:
+                ctype = ctypes.c_int(python_arg)
             else:
-                raise NotImplementedError(type_info.get_tag())
+                type_tag = type_info.get_tag()
+                raise NotImplementedError(
+                    'type tag: %s (%d)' % (
+                    _lib.g_type_tag_to_string(type_tag),
+                    type_tag))
             call_args.append(ctype)
             # FIXME: Return value of inout parameters
             out_args.append([])
@@ -430,7 +438,9 @@ class TypeInfo(BaseInfo):
 
     def get_ctype(self):
         type_tag = self.get_tag()
-        if type_tag == TYPE_TAG_INT32:
+        if type_tag == TYPE_TAG_BOOLEAN:
+            return ctypes.c_int
+        elif type_tag == TYPE_TAG_INT32:
             return ctypes.c_int32
         elif type_tag == TYPE_TAG_UTF8:
             return ctypes.c_char_p
@@ -442,7 +452,9 @@ class TypeInfo(BaseInfo):
             return ctypes.POINTER(_gobject.CGObject)
 
         raise NotImplementedError(
-            'type tag: ' + _lib.g_type_tag_to_string(type_tag))
+            'type tag: %s (%d)' % (
+            _lib.g_type_tag_to_string(type_tag),
+            type_tag))
 
 
 class Struct(object):
