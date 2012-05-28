@@ -343,9 +343,7 @@ def add_emission_hook(*args):
     print 'add_emission_hook: not impl', args
 
 
-def features(*args):
-    print 'features: not impl', args
-
+features = ["generic-c-marshaller"]
 
 def list_properties(*args):
     print 'list_properties: not impl', args
