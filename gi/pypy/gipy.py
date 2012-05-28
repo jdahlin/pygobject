@@ -575,6 +575,13 @@ class Repository(object):
         return _lib.g_irepository_get_shared_library(self.value, namespace)
 
 
+    _lib.g_irepository_get_loaded_namespaces.argtypes = [ctypes.c_void_p]
+    _lib.g_irepository_get_loaded_namespaces.restype = ctypes.c_char_p
+
+    def get_loaded_namespaces(self):
+        return _lib.g_irepository_get_loaded_namespaces(self.value)
+
+
 def enum_add(gtype):
     return type(gtype.name, (_gobject.GEnum, ), { '__gtype__': gtype })
 
