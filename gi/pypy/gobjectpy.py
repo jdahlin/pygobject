@@ -71,7 +71,7 @@ class GType(object):
         return self.value
 
     def __repr__(self):
-        return '<GType %s>' % (self.name, )
+        return '<GType %s (%d)>' % (self.name, int(self))
 
     _lib.g_type_is_a.argtypes = [ctypes.c_int, ctypes.c_int]
     _lib.g_type_is_a.restype = ctypes.c_int
