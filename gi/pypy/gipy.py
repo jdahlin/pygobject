@@ -1,5 +1,6 @@
 import ctypes
 from ctypes.util import find_library
+import os
 import sys
 
 import glibpy as _glib
@@ -100,7 +101,7 @@ class BaseInfo(ctypes.Structure):
         if info_type == INFO_TYPE_FUNCTION:
             info = ctypes.cast(info, ctypes.POINTER(FunctionInfo))
         elif info_type == INFO_TYPE_CALLBACK:
-            info = ctypes.cast(info, ctypes.POINTER(CallbackInfo))
+            info = ctypes.cast(info, ctypes.POINTER(CallableInfo))
         elif info_type == INFO_TYPE_STRUCT:
             info = ctypes.cast(info, ctypes.POINTER(StructInfo))
         elif info_type == INFO_TYPE_ENUM:
@@ -167,6 +168,10 @@ class CallableInfo(BaseInfo):
         for i in range(self.get_n_args()):
             yield self.get_arg(i)
 
+    get_return_type = infofunc('get_return_type', ctypes.POINTER(BaseInfo))
+
+# FIXME: Rename
+CallbackInfo = CallableInfo
 
 class ArgInfo(BaseInfo):
     get_direction = infofunc('get_direction', ret=ctypes.c_int)
@@ -204,15 +209,32 @@ class ArgInfo(BaseInfo):
         pass
 
 
+def _find_library(lib_name):
+    lib = find_library(lib_name)
+    if lib is not None:
+        return lib
+
+    for path in os.environ.get('LD_LIBRARY_PATH', []):
+        lib = os.path.join(path, lib_name)
+        if os.path.exists(lib):
+            return lib
+
+
 class FunctionInfo(CallableInfo):
     def invoke(self, *in_args):
         ns = self.get_namespace()
         symbol = self.get_symbol()
         repo = Repository.get_default()
         for lib_path in repo.get_shared_library(ns).split(','):
-            lib = ctypes.CDLL(find_library(lib_path))
-            func = getattr(lib, symbol)
+            full_path = _find_library(lib_path)
+            lib = ctypes.CDLL(full_path)
+            try:
+                func = getattr(lib, symbol)
+            except AttributeError:
+                continue
             break
+        else:
+            raise Exception("Could not load symbol: %s" % (symbol, ))
 
         func.argtypes = []
 
@@ -228,17 +250,29 @@ class FunctionInfo(CallableInfo):
                 del return_infos[array_length_arg]
             return return_infos
 
-        call_args = []
-        out_args = []
-
         arg_infos = list(self.get_arguments())
 
         # Prepare argtypes / restype
         for n, arg_info in enumerate(arg_infos):
             type_info = arg_info.get_type()
-            #print n, arg_info, type_info
             if type_info.get_tag() == TYPE_TAG_ARRAY:
                 ctype = ctypes.POINTER(type_info.get_param_type(0).get_ctype())
+            elif type_info.get_tag() == TYPE_TAG_INTERFACE:
+                interface_info = type_info.get_interface()
+                if isinstance(interface_info, CallableInfo):
+                    ret_type = interface_info.get_return_type()
+                    callable_args = []
+                    for callable_arg in interface_info.get_arguments():
+                        if callable_arg.get_name() == 'user_data':
+                            ctype = ctypes.py_object
+                        else:
+                            callable_type = callable_arg.get_type()
+                            ctype = callable_type.get_ctype()
+                        callable_args.append(ctype)
+                    arg_info.ctype = ctype = ctypes.CFUNCTYPE(
+                        ret_type.get_ctype(), *callable_args)
+                else:
+                    ctype = type_info.get_ctype()
             else:
                 ctype = type_info.get_ctype()
 
@@ -252,14 +286,17 @@ class FunctionInfo(CallableInfo):
         else:
             obj = None
 
+        call_args = []
+        out_args = []
+
         for n, arg_info in enumerate(remove_array_length_args(arg_infos)):
             if arg_info.get_direction() == DIRECTION_OUT:
                 continue
 
             python_arg = in_args[n]
             type_info = arg_info.get_type()
-
-            if type_info.get_tag() == TYPE_TAG_ARRAY:
+            type_tag = type_info.get_tag()
+            if type_tag == TYPE_TAG_ARRAY:
                 length = len(python_arg)
                 array_length_arg = type_info.get_array_length()
                 if array_length_arg != -1:
@@ -269,37 +306,50 @@ class FunctionInfo(CallableInfo):
                     if list_arg_info.get_direction() == DIRECTION_INOUT:
                         list_length_arg = ctypes.byref(list_length_arg)
                     call_args.append(list_length_arg)
-                    out_args.append(list_length_arg)
+                    out_args.append([])
                 item_ctype = type_info.get_param_type(0).get_ctype()
                 item = ctypes.pointer(item_ctype(python_arg[0]))
                 ctype = ctypes.byref(item)
-            elif type_info.get_tag() == TYPE_TAG_INTERFACE:
-                ctype = python_arg.obj
-            elif type_info.get_tag() == TYPE_TAG_UTF8:
+            elif type_tag == TYPE_TAG_INTERFACE:
+                interface_info = type_info.get_interface()
+                if isinstance(interface_info, CallableInfo):
+                    def wrapper(*args, **kwargs):
+                        return python_arg(*args, **kwargs)
+                    ctype = arg_info.ctype(wrapper)
+                else:
+                    ctype = python_arg.obj
+            elif type_tag == TYPE_TAG_UTF8:
                 ctype = ctypes.c_char_p(python_arg)
-            elif type_info.get_tag() == TYPE_TAG_UTF8:
+            elif type_tag == TYPE_TAG_UTF8:
                 ctype = ctypes.c_char_p(python_arg)
-            elif type_info.get_tag() == TYPE_TAG_BOOLEAN:
+            elif type_tag == TYPE_TAG_BOOLEAN:
                 ctype = ctypes.c_int(python_arg)
+            elif type_tag == TYPE_TAG_VOID:
+                assert type_info.is_pointer()
+                if arg_info.get_name() == 'user_data':
+                    ctype = ctypes.c_void_p(ctypes.py_object(python_arg))
+                else:
+                    ctype = ctypes.c_void_p(python_arg)
             else:
-                type_tag = type_info.get_tag()
                 raise NotImplementedError(
                     'type tag: %s (%d)' % (
                     _lib.g_type_tag_to_string(type_tag),
                     type_tag))
             call_args.append(ctype)
-            # FIXME: Return value of inout parameters
-            out_args.append([])
 
         if self.is_method():
             call_args.insert(0, obj)
             func.argtypes.insert(0, ctypes.POINTER(_gobject.CGObject))
-        func(*call_args)
 
         return_args = []
+        retval = func(*call_args)
+        return_args.append(retval)
         for out_arg in out_args:
             return_args.append(out_arg)
-        return out_args
+
+        if len(return_args) == 1:
+            return return_args[0]
+        return return_args
 
     get_flags = infofunc('get_flags', ctypes.c_long)
     get_symbol = infofunc('get_symbol', ctypes.c_char_p)
@@ -310,10 +360,10 @@ class FunctionInfo(CallableInfo):
     def is_constructor(self):
         return False
         # FIXME
-        return self.get_flags() & FUNCTION_IS_CONSTRUCTOR
+        return bool(self.get_flags() & FUNCTION_IS_CONSTRUCTOR)
 
     def is_method(self):
-        return self.get_flags() & FUNCTION_IS_METHOD
+        return bool(self.get_flags() & FUNCTION_IS_METHOD)
 
 
 class RegisteredTypeInfo(BaseInfo):
@@ -421,10 +471,6 @@ class UnionInfo(RegisteredTypeInfo):
         return []
 
 
-class CallbackInfo(BaseInfo):
-    pass
-
-
 _lib.g_type_tag_to_string.argtypes = [ctypes.c_int]
 _lib.g_type_tag_to_string.restype = ctypes.c_char_p
 
@@ -437,13 +483,20 @@ class TypeInfo(BaseInfo):
 
     get_array_length = infofunc('get_array_length', ctypes.c_int)
     get_array_type = infofunc('get_array_type', ctypes.c_int)
+    get_interface = infofunc('get_interface', ctypes.POINTER(BaseInfo))
     get_param_type = infofunc('get_param_type',
                               ctypes.POINTER(BaseInfo), [ctypes.c_int])
     get_tag = infofunc('get_tag', ctypes.c_int)
+    is_pointer = infofunc('is_pointer', ctypes.c_bool)
 
     def get_ctype(self):
         type_tag = self.get_tag()
-        if type_tag == TYPE_TAG_BOOLEAN:
+        if type_tag == TYPE_TAG_VOID:
+            if self.is_pointer():
+                return ctypes.c_void_p
+            else:
+                return None
+        elif type_tag == TYPE_TAG_BOOLEAN:
             return ctypes.c_int
         elif type_tag == TYPE_TAG_INT32:
             return ctypes.c_int32
@@ -560,12 +613,9 @@ class Repository(object):
     _lib.g_irepository_get_info.restype = ctypes.POINTER(BaseInfo)
 
     def get_infos(self, namespace):
-        n_infos = _lib.g_irepository_get_n_infos(self.value, namespace)
-        infos = []
-        for i in range(n_infos):
+        for i in range(_lib.g_irepository_get_n_infos(self.value, namespace)):
             info = _lib.g_irepository_get_info(self.value, namespace, i)
-            infos.append(info.contents.new(info))
-        return info
+            yield info.contents.new(info)
 
     _lib.g_irepository_get_shared_library.argtypes = [
         ctypes.c_void_p, ctypes.c_char_p]
