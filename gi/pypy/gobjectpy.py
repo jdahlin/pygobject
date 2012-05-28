@@ -416,6 +416,10 @@ _lib.g_type_is_a.restype = ctypes.c_long
 
 
 def type_is_a(a, b):
+    if hasattr(a, '__gtype__'):
+        a = a.__gtype__
+    if hasattr(b, '__gtype__'):
+        b = b.__gtype__
     return bool(_lib.g_type_is_a(int(a), int(b)))
 
 _lib.g_type_name.argtypes = [GType.c]
