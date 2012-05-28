@@ -113,6 +113,8 @@ class BaseInfo(ctypes.Structure):
             info = ctypes.cast(info, ctypes.POINTER(InterfaceInfo))
         elif info_type == INFO_TYPE_VALUE:
             info = ctypes.cast(info, ctypes.POINTER(ValueInfo))
+        elif info_type == INFO_TYPE_SIGNAL:
+            info = ctypes.cast(info, ctypes.POINTER(SignalInfo))
         elif info_type == INFO_TYPE_CONSTANT:
             info = ctypes.cast(info, ctypes.POINTER(ConstantInfo))
         elif info_type == INFO_TYPE_UNION:
@@ -325,6 +327,10 @@ class ValueInfo(BaseInfo):
     get_value = infofunc('get_value', ctypes.c_long)
 
 
+class SignalInfo(BaseInfo):
+    pass
+
+
 class ObjectInfo(RegisteredTypeInfo):
     get_parent = infofunc('get_parent', ctypes.POINTER(BaseInfo))
     get_n_methods = infofunc('get_n_methods', ctypes.c_int)
@@ -334,6 +340,19 @@ class ObjectInfo(RegisteredTypeInfo):
     def get_methods(self):
         for i in range(self.get_n_methods()):
             yield self.get_method(i)
+
+    get_n_signals = infofunc('get_n_signals', ctypes.c_int)
+    get_signal = infofunc('get_signal',
+                          ctypes.POINTER(BaseInfo), [ctypes.c_int])
+
+    def get_signal_by_name(self, signal_name):
+        for i in range(self.get_n_signals()):
+            signal = self.get_signal(i)
+            if signal.get_name() == signal_name:
+                return signal
+        parent = self.get_parent()
+        if parent:
+            return parent.get_signal_by_name(signal_name)
 
     def get_interfaces(self):
         return []
@@ -501,8 +520,17 @@ class Repository(object):
         ctypes.c_void_p, ctypes.c_char_p, ctypes.c_char_p]
     _lib.g_irepository_find_by_name.restype = ctypes.POINTER(BaseInfo)
 
-    def find_by_name(self, namespace, version):
-        info = _lib.g_irepository_find_by_name(self.value, namespace, version)
+    def find_by_name(self, namespace, name):
+        info = _lib.g_irepository_find_by_name(self.value, namespace, name)
+        if info:
+            return info.contents.new(info)
+
+    _lib.g_irepository_find_by_gtype.argtypes = [
+        ctypes.c_void_p, _gobject.GType.c]
+    _lib.g_irepository_find_by_gtype.restype = ctypes.POINTER(BaseInfo)
+
+    def find_by_gtype(self, gtype):
+        info = _lib.g_irepository_find_by_gtype(self.value, gtype)
         if info:
             return info.contents.new(info)
 

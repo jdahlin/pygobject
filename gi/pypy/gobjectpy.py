@@ -275,13 +275,44 @@ class GObject(object):
         _lib.g_object_get_property(self.obj, prop_name, g_value)
 
 
+    def connect(self, signal_name, func, *args):
+        if not callable(func):
+            raise TypeError("func must be callable")
+
+        g_type = self.obj.contents.g_type
+        signal_id = ctypes.c_uint()
+        detail_id = ctypes.c_long()
+        if not _lib.g_signal_parse_name(signal_name, g_type,
+                                        ctypes.byref(signal_id),
+                                        ctypes.byref(detail_id),
+                                        False):
+            raise TypeError('%s: unknown signal name: %s' % (
+                repr(self), signal_name))
+
+        from gi.pypy.gipy import Repository
+        repo = Repository.get_default()
+        info = repo.find_by_gtype(g_type)
+        signal_info = info.get_signal_by_name(signal_name)
+        print signal_info
+
+        # g_closure_new_simple
+        # g_closure_add_invalidate_notifier
+        # g_closure_set_marshal
+
+
 _lib.g_object_newv.argtypes = [GType.c,
                                ctypes.c_int, ctypes.POINTER(GParameter)]
 _lib.g_object_newv.restype = GObject.c
-
 _lib.g_object_get_property.argtypes = [GObject.c,
                                        ctypes.c_char_p,
                                        ctypes.POINTER(GValue)]
+_lib.g_signal_parse_name.argtypes = [ctypes.c_char_p,
+                                     GType.c,
+                                     ctypes.POINTER(ctypes.c_uint),
+                                     ctypes.POINTER(ctypes.c_long),
+                                     ctypes.c_int]
+_lib.g_signal_parse_name.restype = ctypes.c_int
+
 
 
 class GObjectWeakRef(object):
