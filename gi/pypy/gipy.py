@@ -571,7 +571,7 @@ class Repository(object):
 
 
 def enum_add(gtype):
-    return type(gtype.name, (_gobject.GEnum, ), {})
+    return type(gtype.name, (_gobject.GEnum, ), { '__gtype__': gtype })
 
 
 def enum_register_new_gtype_and_add(*args):
@@ -579,7 +579,7 @@ def enum_register_new_gtype_and_add(*args):
 
 
 def flags_add(gtype):
-    return type(gtype.name, (_gobject.GFlags, ), {})
+    return type(gtype.name, (_gobject.GFlags, ), { '__gtype__': gtype })
 
 
 def flags_register_new_gtype_and_add(*args):
